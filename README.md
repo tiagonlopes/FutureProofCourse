@@ -10,7 +10,13 @@ Install the dependencies and the package:
 uv sync
 ```
 
-The training data is not committed to the repository. Copy `.env.example` to `.env` and replace the password placeholder with the one from the course's Tools & Setup lesson, then materialize the extract:
+The training data is not committed to the repository. Copy `.env.example` to `.env` and fill in the values (`.env` is git-ignored, so credentials stay local):
+
+- `DB_*`: the database connection, including the password from the course's Tools & Setup lesson.
+- `MLFLOW_TRACKING_URI`: where training runs are logged (defaults to `http://127.0.0.1:5001` if unset).
+- `AWS_*`: credentials for the S3 bucket the model is published to.
+
+Then materialize the extract:
 
 ```
 uv run scripts/fetch_data.py
@@ -24,7 +30,18 @@ This writes `data/01_raw/trial_snapshot.csv`. Training always runs from that fil
 uv run scripts/train.py
 ```
 
-This builds the processed training table from the raw extract, trains the model, and writes `models/model.json` and `models/metrics.json`.
+This builds the processed training table from the raw extract, trains the model, and writes `models/model.json` and `models/metrics.json`. Each run is also logged to MLflow (experiment `trial-conversion-model`), so an MLflow server must be reachable at `MLFLOW_TRACKING_URI`. Local MLflow output (`mlartifacts/`, `mlflow.db`) is git-ignored.
+
+## Publish
+
+`models/` is not committed, so the bucket holds the only copy of the model that anything outside your machine can reach. Check that your credentials work, then upload the trained model:
+
+```
+uv run src/trial_conversion_model/check_s3.py
+uv run src/trial_conversion_model/publish_model.py
+```
+
+This uploads `models/model.json` to `s3://trial-conversion-artifacts-tiago/models/model.json` and verifies the object's size matches the local file. The key is fixed: downstream pipelines read the model by that exact name. Run it from the project root, since the local path is relative, and note it overwrites any object already at that key.
 
 ## Serve
 
@@ -92,7 +109,7 @@ HTTP/1.1 422 Unprocessable Entity
 
 ## Layout
 
-- `src/trial_conversion_model/`: the package. `data.py` acquires the extract from the database and loads the pipeline's inputs; `features.py` derives the model features from the snapshot's base aggregates and writes the processed training table; `train.py` trains, evaluates, and saves the model; `predict.py` scores trials from their base aggregates; `api/` is the FastAPI service (`main.py` builds the app, `routes.py` holds the endpoints, `schemas.py` defines the request and response shapes).
+- `src/trial_conversion_model/`: the package. `data.py` acquires the extract from the database and loads the pipeline's inputs; `features.py` derives the model features from the snapshot's base aggregates and writes the processed training table; `train.py` trains, evaluates, and saves the model; `predict.py` scores trials from their base aggregates; `api/` is the FastAPI service (`main.py` builds the app, `routes.py` holds the endpoints, `schemas.py` defines the request and response shapes); `check_s3.py` verifies the S3 credentials and `publish_model.py` uploads the trained model to the bucket.
 - `scripts/`: thin entry points that call into the package (`fetch_data.py` materializes the extract, `train.py` builds the training table and trains). Production runs these; the logic stays importable and testable in `src/`.
 - `notebooks/`: exploration only. Notebooks import from the package; no pipeline logic lives here.
 - `data/01_raw/`: the immutable extract as pulled from the database (never committed, never modified).
