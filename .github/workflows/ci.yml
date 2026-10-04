@@ -83,8 +83,11 @@ jobs:
       - name: Build and push the image
         run: |
           IMAGE=ghcr.io/tiagonlopes/trial-conversion-model
-          docker build -t $IMAGE:latest -t $IMAGE:${{ github.sha }} .
+          VERSION=$(grep -m1 '^version' pyproject.toml | cut -d'"' -f2)
+          docker build --build-arg GIT_SHA=${{ github.sha }} \
+            -t $IMAGE:latest -t $IMAGE:$VERSION -t $IMAGE:${{ github.sha }} .
           docker push $IMAGE:latest
+          docker push $IMAGE:$VERSION
           docker push $IMAGE:${{ github.sha }}
 
   deploy:

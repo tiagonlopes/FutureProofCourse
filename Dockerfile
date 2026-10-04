@@ -20,5 +20,9 @@ RUN uv sync --frozen --no-dev
 # The model artifact ships inside the image; the service never trains
 COPY models/model.json models/model.json
 
+# The commit this image was built from, reported by /health. CI passes it in.
+ARG GIT_SHA=unknown
+ENV GIT_SHA=$GIT_SHA
+
 EXPOSE 8000
 CMD ["uv", "run", "--no-sync", "uvicorn", "trial_conversion_model.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
