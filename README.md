@@ -30,7 +30,7 @@ This writes `data/01_raw/trial_snapshot.csv`. Training always runs from that fil
 uv run scripts/train.py
 ```
 
-This builds the processed training table from the raw extract, trains the model, and writes `models/model.json` and `models/metrics.json`. Each run is also logged to MLflow (experiment `trial-conversion-model`), so an MLflow server must be reachable at `MLFLOW_TRACKING_URI`. Local MLflow output (`mlartifacts/`, `mlflow.db`) is git-ignored.
+This builds the processed training table from the raw extract, trains the model, writes `models/model.json` and `models/metrics.json`, and then publishes the model to S3 (see Publish). Each run is also logged to MLflow (experiment `trial-conversion-model`), so an MLflow server must be reachable at `MLFLOW_TRACKING_URI`. Local MLflow output (`mlartifacts/`, `mlflow.db`) is git-ignored.
 
 ## Publish
 
