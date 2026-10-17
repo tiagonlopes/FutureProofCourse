@@ -3,7 +3,11 @@ from pathlib import Path
 
 import pandas as pd
 
-from trial_conversion_model.monitoring import load_reference, publish_report, run_drift_check
+from trial_conversion_model.monitoring import (
+    load_reference,
+    publish_report,
+    run_drift_check,
+)
 
 if __name__ == "__main__":
     if len(sys.argv) != 2:
