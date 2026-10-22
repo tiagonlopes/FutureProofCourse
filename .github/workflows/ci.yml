@@ -12,9 +12,9 @@ jobs:
   ci:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v4
 
-      - uses: astral-sh/setup-uv@v7
+      - uses: astral-sh/setup-uv@v5
 
       - name: Install dependencies
         run: uv sync --frozen
@@ -22,20 +22,16 @@ jobs:
       - name: Lint
         run: uv run ruff check .
 
-      # TODO: one step is missing here, and where you put it is the point.
-      # The model artifact is not in git, and your API loads the model the
-      # moment it is imported, so anything that imports your service needs
-      # that file to already be on disk. Add a step that downloads
-      # models/model.json from your bucket, and put it where it has to go.
-      # The publish job below does the same download; read it for the
-      # shape, then decide the position here yourself.
+      # The model artifact is not in git; the service cannot exist without
+      # it. CI pulls the published model from S3, exactly like production
+      # will, BEFORE the tests run (the API loads the model at import).
       - name: Pull the published model from S3
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_DEFAULT_REGION: us-east-2
         run: >
-          uv run --with boto3 python -c "import boto3;
+          uv run python -c "import boto3;
           boto3.client('s3').download_file(
           'trial-conversion-artifacts-tiago',
           'models/model.json', 'models/model.json')"
@@ -48,17 +44,15 @@ jobs:
 
   publish:
     needs: ci
-    # TODO: every push runs the job above, but only one branch should ever
-    # publish an image. Add the condition that limits this job to main.
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v4
 
-      - uses: astral-sh/setup-uv@v7
+      - uses: astral-sh/setup-uv@v5
 
       - name: Pull the published model from S3
         env:
@@ -80,21 +74,20 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push the image
+      - name: Build and push both images
         run: |
           IMAGE=ghcr.io/tiagonlopes/trial-conversion-model
-          VERSION=$(grep -m1 '^version' pyproject.toml | cut -d'"' -f2)
-          docker build --build-arg GIT_SHA=${{ github.sha }} \
-            -t $IMAGE:latest -t $IMAGE:$VERSION -t $IMAGE:${{ github.sha }} .
+          docker build -t $IMAGE:latest -t $IMAGE:${{ github.sha }} .
           docker push $IMAGE:latest
-          docker push $IMAGE:$VERSION
           docker push $IMAGE:${{ github.sha }}
+          # The jobs image ships with every push, the same way the API's does.
+          docker build -f Dockerfile.jobs -t $IMAGE-jobs:latest -t $IMAGE-jobs:${{ github.sha }} .
+          docker push $IMAGE-jobs:latest
+          docker push $IMAGE-jobs:${{ github.sha }}
 
   deploy:
     needs: publish
-    # TODO: same condition as the publish job. Deploying is the one thing
-    # that must never happen from a branch.
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
       # The same three commands a human runs for a manual deploy,
@@ -106,6 +99,9 @@ jobs:
           username: ubuntu
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
+            # Cron starts a container from this image every morning, so the
+            # pull here is what puts a pushed change into tomorrow's run.
+            sudo docker pull ghcr.io/tiagonlopes/trial-conversion-model-jobs:latest
             sudo docker pull ghcr.io/tiagonlopes/trial-conversion-model:latest
             sudo docker rm -f trial-conversion || true
             sudo docker run -d --restart unless-stopped --name trial-conversion -p 8000:8000 ghcr.io/tiagonlopes/trial-conversion-model:latest
