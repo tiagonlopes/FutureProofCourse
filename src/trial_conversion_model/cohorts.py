@@ -23,12 +23,12 @@ def pull_newest_cohort() -> Path:
     )
     listing = s3.list_objects_v2(Bucket=COHORT_BUCKET, Prefix=COHORT_PREFIX)
     # Files are named by date (cohort_YYYY-MM-DD.parquet), so lexicographic
-    # order is chronological order and the newest sorts last.
-    key = sorted(
+    # order is chronological order and the newest is the max.
+    key = max(
         obj["Key"]
         for obj in listing["Contents"]
         if obj["Key"].endswith(".parquet")
-    )[-1]
+    )
     COHORT_DIR.mkdir(parents=True, exist_ok=True)
     path = COHORT_DIR / Path(key).name
     s3.download_file(COHORT_BUCKET, key, str(path))
